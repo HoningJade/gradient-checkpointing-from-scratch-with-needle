@@ -49,7 +49,7 @@ void Compact(const AlignedArray& a, AlignedArray* out, std::vector<int32_t> shap
              std::vector<int32_t> strides, size_t offset) {
   /**
    * Compact an array in memory
-   *
+   * 
    * Args:
    *   a: non-compact representation of the array, given as input
    *   out: compact version of the array to be written
@@ -62,7 +62,30 @@ void Compact(const AlignedArray& a, AlignedArray* out, std::vector<int32_t> shap
    *  function will implement here, so we won't repeat this note.)
    */
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  int32_t size = out->size;
+  int n = shape.size();
+  std::vector<int32_t> indexes(n, 0);
+  int i = n - 1;
+  for (int j = 0; j < size; j++) {
+    // store out according to current indexes array
+    int arr_offset = offset;
+    for (int l = 0; l < n; l++) {
+      arr_offset += indexes[l] * strides[l];
+    }
+    out->ptr[j] = a.ptr[arr_offset];
+
+    // compute next indexes array
+    indexes[i]++;
+    int carry = indexes[i] / shape[i];
+    while (carry && i > 0) {
+      indexes[i] %= shape[i];
+      int next_i = (i - 1 + n) % n;
+      indexes[next_i] += carry;
+      carry = indexes[next_i] / shape[next_i];
+      i = next_i;
+    }
+    i = n - 1;
+  }
   /// END SOLUTION
 }
 
@@ -79,7 +102,31 @@ void EwiseSetitem(const AlignedArray& a, AlignedArray* out, std::vector<int32_t>
    *   offset: offset of the *out* array (not a, which has zero offset, being compact)
    */
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  int32_t size = a.size;
+  int n = shape.size();
+  std::vector<int32_t> indexes(n, 0);
+  int i = n - 1;
+  for (int j = 0; j < size; j++) {
+    // store out according to current indexes array
+    int arr_offset = offset;
+    for (int l = 0; l < n; l++) {
+      arr_offset += indexes[l] * strides[l];
+    }
+    out->ptr[arr_offset] = a.ptr[j];
+
+    // compute next indexes array
+    indexes[i]++;
+    int carry = indexes[i] / shape[i];
+    while (carry && i > 0) {
+      indexes[i] %= shape[i];
+      int next_i = (i - 1 + n) % n;
+      indexes[next_i] += carry;
+      carry = indexes[next_i] / shape[next_i];
+      i = next_i;
+    }
+    i = n - 1;
+    
+  }
   /// END SOLUTION
 }
 
@@ -100,26 +147,106 @@ void ScalarSetitem(const size_t size, scalar_t val, AlignedArray* out, std::vect
    */
 
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  int n = shape.size();
+  std::vector<int32_t> indexes(n, 0);
+  int i = n - 1;
+  for (int j = 0; j < size; j++) {
+    // store out according to current indexes array
+    int arr_offset = offset;
+    for (int l = 0; l < n; l++) {
+      arr_offset += indexes[l] * strides[l];
+    }
+    out->ptr[arr_offset] = val;
+
+    // compute next indexes array
+    indexes[i]++;
+    int carry = indexes[i] / shape[i];
+    while (carry && i > 0) {
+      indexes[i] %= shape[i];
+      int next_i = (i - 1 + n) % n;
+      indexes[next_i] += carry;
+      carry = indexes[next_i] / shape[next_i];
+      i = next_i;
+    }
+    i = n - 1;
+    
+  }
   /// END SOLUTION
+}
+
+template <typename F>
+void EwiseFun(const AlignedArray& a, const AlignedArray& b, AlignedArray* out, F f) {
+  for (size_t i = 0; i < a.size; i++) {
+    out->ptr[i] = f(a.ptr[i], b.ptr[i]);
+  }
+}
+
+template <typename F>
+void ScalarFun(const AlignedArray& a, scalar_t val, AlignedArray* out, F f) {
+  for (size_t i = 0; i < a.size; i++) {
+    out->ptr[i] = f(a.ptr[i], val);
+  }
+}
+
+template <typename F>
+void UnaryFun(const AlignedArray& a, AlignedArray* out, F f) {
+  for (size_t i = 0; i < a.size; i++) {
+    out->ptr[i] = f(a.ptr[i]);
+  }
+}
+
+scalar_t Add(scalar_t a, scalar_t b) {
+  return a + b;
+}
+
+scalar_t Mul(scalar_t a, scalar_t b) {
+  return a * b;
+}
+
+scalar_t Div(scalar_t a, scalar_t b) {
+  return a / b;
+}
+
+scalar_t Power(scalar_t a, scalar_t b) {
+  return pow(a, b);
+}
+
+scalar_t Maximum(scalar_t a, scalar_t b) {
+  return std::max(a, b);
+}
+
+scalar_t Eq(scalar_t a, scalar_t b) {
+  return std::fabs(a - b) < 1e-6;
+}
+
+scalar_t Ge(scalar_t a, scalar_t b) {
+  return a >= b;
+}
+
+scalar_t Log(scalar_t a) {
+  return log(a);
+}
+
+scalar_t Exp(scalar_t a) {
+  return exp(a);
+}
+
+scalar_t Tanh(scalar_t a) {
+  return tanh(a);
 }
 
 void EwiseAdd(const AlignedArray& a, const AlignedArray& b, AlignedArray* out) {
   /**
    * Set entries in out to be the sum of correspondings entires in a and b.
    */
-  for (size_t i = 0; i < a.size; i++) {
-    out->ptr[i] = a.ptr[i] + b.ptr[i];
-  }
+  EwiseFun(a, b, out, Add);
 }
 
 void ScalarAdd(const AlignedArray& a, scalar_t val, AlignedArray* out) {
   /**
    * Set entries in out to be the sum of corresponding entry in a plus the scalar val.
    */
-  for (size_t i = 0; i < a.size; i++) {
-    out->ptr[i] = a.ptr[i] + val;
-  }
+  ScalarFun(a, val, out, Add);
 }
 
 
@@ -143,7 +270,65 @@ void ScalarAdd(const AlignedArray& a, scalar_t val, AlignedArray* out) {
  * signatures above.
  */
 
+void EwiseMul(const AlignedArray& a, const AlignedArray& b, AlignedArray* out) {
+  return EwiseFun(a, b, out, Mul);
+}
 
+void ScalarMul(const AlignedArray& a, scalar_t val, AlignedArray* out) {
+  return ScalarFun(a, val, out, Mul);
+}
+
+void EwiseDiv(const AlignedArray& a, const AlignedArray& b, AlignedArray* out) {
+  return EwiseFun(a, b, out, Div);
+}
+
+void ScalarDiv(const AlignedArray& a, scalar_t val, AlignedArray* out) {
+  return ScalarFun(a, val, out, Div);
+}
+
+void ScalarPower(const AlignedArray& a, scalar_t val, AlignedArray* out) {
+  return ScalarFun(a, val, out, Power);
+}
+
+void EwiseMaximum(const AlignedArray& a, const AlignedArray& b, AlignedArray* out) {
+  return EwiseFun(a, b, out, Maximum);
+}
+
+void ScalarMaximum(const AlignedArray& a, scalar_t val, AlignedArray* out) {
+  return ScalarFun(a, val, out, Maximum);
+}
+
+void EwiseEq(const AlignedArray& a, const AlignedArray& b, AlignedArray* out) {
+  return EwiseFun(a, b, out, Eq);
+}
+
+void ScalarEq(const AlignedArray& a, scalar_t val, AlignedArray* out) {
+  return ScalarFun(a, val, out, Eq);
+}
+
+void EwiseGe(const AlignedArray& a, const AlignedArray& b, AlignedArray* out) {
+  return EwiseFun(a, b, out, Ge);
+}
+
+void ScalarGe(const AlignedArray& a, scalar_t val, AlignedArray* out) {
+  return ScalarFun(a, val, out, Ge);
+}
+
+void EwiseLog(const AlignedArray& a, AlignedArray* out) {
+  return UnaryFun(a, out, Log);
+}
+
+void EwiseExp(const AlignedArray& a, AlignedArray* out) {
+  return UnaryFun(a, out, Exp);
+}
+
+void EwiseTanh(const AlignedArray& a, AlignedArray* out) {
+  return UnaryFun(a, out, Tanh);
+}
+
+
+// Start of Part 4
+// Start of Part 4
 void Matmul(const AlignedArray& a, const AlignedArray& b, AlignedArray* out, uint32_t m, uint32_t n,
             uint32_t p) {
   /**
@@ -160,7 +345,17 @@ void Matmul(const AlignedArray& a, const AlignedArray& b, AlignedArray* out, uin
    */
 
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < p; j++) {
+      int r = i * p + j;
+      out->ptr[r] = 0;
+      for (int k = 0; k < n; k++) {
+        int s = i * n + k;
+        int t = k * p + j;
+        out->ptr[r] += a.ptr[s] * b.ptr[t];
+      }
+    }
+  }
   /// END SOLUTION
 }
 
@@ -190,7 +385,16 @@ inline void AlignedDot(const float* __restrict__ a,
   out = (float*)__builtin_assume_aligned(out, TILE * ELEM_SIZE);
 
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  for (int i = 0; i < TILE; i++) {
+    for (int j = 0; j < TILE; j++) {
+      int r = i * TILE + j;
+      for (int k = 0; k < TILE; k++) {
+        int s = i * TILE + k;
+        int t = k * TILE + j;
+        out[r] += a[s] * b[t];
+      }
+    }
+  }
   /// END SOLUTION
 }
 
@@ -216,7 +420,31 @@ void MatmulTiled(const AlignedArray& a, const AlignedArray& b, AlignedArray* out
    *
    */
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  size_t m1 = m / TILE;
+  size_t n1 = n / TILE;
+  size_t p1 = p / TILE;
+  size_t tile_square = TILE * TILE;
+  scalar_t *a1 = new scalar_t[tile_square];
+  scalar_t *b1 = new scalar_t[tile_square];
+  scalar_t *out1 = new scalar_t[tile_square];
+  for (int i = 0; i < m1; i++) {
+    for (int j = 0; j < p1; j++) {
+      std::fill_n(out1, tile_square, 0);
+      for (int k = 0; k < n1; k++) {
+        int s = (i * n1 + k) * tile_square;
+        int t = (k * p1 + j) * tile_square;
+        for (int u = 0; u < tile_square; u++) {
+          a1[u] = a.ptr[s + u];
+          b1[u] = b.ptr[t + u];
+        }
+        AlignedDot(a1, b1, out1);
+      }
+      int r = (i * p1 + j) * tile_square;
+      for(int u = 0; u < tile_square; u++) {
+        out->ptr[r + u] = out1[u];
+      }
+    }
+  }
   /// END SOLUTION
 }
 
@@ -231,7 +459,15 @@ void ReduceMax(const AlignedArray& a, AlignedArray* out, size_t reduce_size) {
    */
 
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  size_t n = out->size;
+  for (int i = 0; i < n; i++) {
+    int j = i * reduce_size;
+    scalar_t res = a.ptr[j];
+    for (int k = 0; k < reduce_size; k++) {
+      res = Maximum(res, a.ptr[k + j]);
+    }
+    out->ptr[i] = res;
+  }
   /// END SOLUTION
 }
 
@@ -246,7 +482,15 @@ void ReduceSum(const AlignedArray& a, AlignedArray* out, size_t reduce_size) {
    */
 
   /// BEGIN SOLUTION
-  assert(false && "Not Implemented");
+  size_t n = out->size;
+  for (int i = 0; i < n; i++) {
+    int j = i * reduce_size;
+    scalar_t res = 0;
+    for (int k = 0; k < reduce_size; k++) {
+      res = Add(res, a.ptr[k + j]);
+    }
+    out->ptr[i] = res;
+  }
   /// END SOLUTION
 }
 

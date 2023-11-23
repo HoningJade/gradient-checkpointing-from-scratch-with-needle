@@ -4,6 +4,7 @@ import numpy as np
 from needle import backend_ndarray as nd
 from needle import Tensor
 
+
 class Dictionary(object):
     """
     Creates a dictionary from a list of words, mapping each word to a
@@ -13,6 +14,7 @@ class Dictionary(object):
     idx2word: list of words in the dictionary, in the order they were added
         to the dictionary (i.e. each word only appears once in this list)
     """
+
     def __init__(self):
         self.word2idx = {}
         self.idx2word = []
@@ -24,28 +26,35 @@ class Dictionary(object):
         and appends to the list of words.
         Returns the word's unique ID.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        # BEGIN YOUR SOLUTION
+        if word not in self.word2idx:
+            id = len(self.idx2word)
+            self.idx2word.append(word)
+            self.word2idx[word] = id
+        return self.word2idx[word]
+        # END YOUR SOLUTION
 
     def __len__(self):
         """
         Returns the number of unique words in the dictionary.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        # BEGIN YOUR SOLUTION
+        return len(self.word2idx.keys())
+        # END YOUR SOLUTION
 
 
 class Corpus(object):
     """
     Creates corpus from train, and test txt files.
     """
+    eos = "<eos>"
+
     def __init__(self, base_dir, max_lines=None):
         self.dictionary = Dictionary()
-        self.train = self.tokenize(os.path.join(base_dir, 'train.txt'), max_lines)
-        self.test = self.tokenize(os.path.join(base_dir, 'test.txt'), max_lines)
+        self.train = self.tokenize(os.path.join(
+            base_dir, 'train.txt'), max_lines)
+        self.test = self.tokenize(os.path.join(
+            base_dir, 'test.txt'), max_lines)
 
     def tokenize(self, path, max_lines=None):
         """
@@ -59,9 +68,20 @@ class Corpus(object):
         Output:
         ids: List of ids
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        # BEGIN YOUR SOLUTION
+        ids = []
+        with open(path) as f:
+            for i, sentence in enumerate(f.readlines()):
+                if i == max_lines:
+                    break
+                for word in sentence.split():
+                    id = self.dictionary.add_word(word)
+                    ids.append(id)
+                # add <eos>
+                id = self.dictionary.add_word(Corpus.eos)
+                ids.append(id)
+        return ids
+        # END YOUR SOLUTION
 
 
 def batchify(data, batch_size, device, dtype):
@@ -80,9 +100,15 @@ def batchify(data, batch_size, device, dtype):
     If the data cannot be evenly divided by the batch size, trim off the remainder.
     Returns the data as a numpy array of shape (nbatch, batch_size).
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    # BEGIN YOUR SOLUTION
+    n = len(data)
+    m = n // batch_size * batch_size
+    data = data[:m]
+    # [1, 2, 3, 4, 5, 6] -> [[1, 2], [3, 4], [5, 6]] -> [[1, 3, 5], [2, 4, 6]]
+    array = np.array(data).reshape(batch_size, -1).transpose(1, 0)
+
+    return array
+    # END YOUR SOLUTION
 
 
 def get_batch(batches, i, bptt, device=None, dtype=None):
@@ -104,6 +130,12 @@ def get_batch(batches, i, bptt, device=None, dtype=None):
     data - Tensor of shape (bptt, bs) with cached data as NDArray
     target - Tensor of shape (bptt*bs,) with cached data as NDArray
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    # BEGIN YOUR SOLUTION
+    data = batches[i: i + bptt]
+    target = batches[i + 1: i + bptt + 1]
+    n = min(data.shape[0], target.shape[0])
+    data = data[:n]
+    target = target[:n].flatten()
+
+    return Tensor(data, device=device, dtype=dtype), Tensor(target, device=device, dtype=dtype)
+    # END YOUR SOLUTION

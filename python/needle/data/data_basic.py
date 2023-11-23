@@ -4,7 +4,6 @@ from ..autograd import Tensor
 from typing import Iterator, Optional, List, Sized, Union, Iterable, Any
 
 
-
 class Dataset:
     r"""An abstract class representing a `Dataset`.
 
@@ -21,7 +20,7 @@ class Dataset:
 
     def __len__(self) -> int:
         raise NotImplementedError
-    
+
     def apply_transforms(self, x):
         if self.transforms is not None:
             # apply the transforms
@@ -55,17 +54,26 @@ class DataLoader:
         self.shuffle = shuffle
         self.batch_size = batch_size
         if not self.shuffle:
-            self.ordering = np.array_split(np.arange(len(dataset)), 
+            self.ordering = np.array_split(np.arange(len(dataset)),
                                            range(batch_size, len(dataset), batch_size))
 
     def __iter__(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        # BEGIN YOUR SOLUTION
+        self.index = 0
+        n = len(self.dataset)
+        if self.shuffle:
+            indices = list(range(n))
+            np.random.shuffle(indices)
+            self.ordering = np.array_split(indices, range(
+                self.batch_size, n, self.batch_size))
+        # END YOUR SOLUTION
         return self
 
     def __next__(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        # BEGIN YOUR SOLUTION
+        if self.index == len(self.ordering):
+            raise StopIteration
+        res = [Tensor(x) for x in self.dataset[self.ordering[self.index]]]
+        self.index += 1
+        return tuple(res)
+        # END YOUR SOLUTION

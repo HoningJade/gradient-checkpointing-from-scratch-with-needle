@@ -24,17 +24,26 @@ class SGD(Optimizer):
         self.weight_decay = weight_decay
 
     def step(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        # BEGIN YOUR SOLUTION
+        for p in self.params:
+            if p.grad is None:
+                continue
+            p_id = id(p)
+            grad = (1. - self.momentum) * \
+                (p.grad.data + self.weight_decay * p.data)
+            grad += self.momentum * self.u.get(p_id, 0.)
+            grad = ndl.Tensor(grad, dtype=p.data.dtype)
+            p.data -= self.lr * grad
+            self.u[p_id] = grad
+        # END YOUR SOLUTION
 
     def clip_grad_norm(self, max_norm=0.25):
         """
         Clips gradient norm of parameters.
         """
-        ### BEGIN YOUR SOLUTION
+        # BEGIN YOUR SOLUTION
         raise NotImplementedError()
-        ### END YOUR SOLUTION
+        # END YOUR SOLUTION
 
 
 class Adam(Optimizer):
@@ -59,6 +68,22 @@ class Adam(Optimizer):
         self.v = {}
 
     def step(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        # BEGIN YOUR SOLUTION
+        self.t += 1
+        for p in self.params:
+            if p.grad is None:
+                continue
+            p_id = id(p)
+            # second term only if L2 regularization
+            grad = p.grad.data + self.weight_decay * p.data
+            grad = ndl.Tensor(grad, dtype=p.data.dtype)
+            self.m[p_id] = self.beta1 * \
+                self.m.get(p_id, 0.) + (1. - self.beta1) * grad
+            self.v[p_id] = self.beta2 * \
+                self.v.get(p_id, 0.) + (1. - self.beta2) * grad ** 2
+            m_hat = self.m[p_id] / (1. - self.beta1 ** self.t)
+            v_hat = self.v[p_id] / (1. - self.beta2 ** self.t)
+            # if use weight-decay:
+            #   p.data -= self.lr * self.weight_decay * p.data
+            p.data -= self.lr * m_hat / (v_hat ** 0.5 + self.eps)
+        # END YOUR SOLUTION
