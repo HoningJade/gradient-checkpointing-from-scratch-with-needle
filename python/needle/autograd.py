@@ -1,5 +1,4 @@
 """Core data structures."""
-from .backend_selection import array_api, NDArray, default_device
 import numpy as array_api
 import needle
 from .backend_numpy import Device, cpu, all_devices
@@ -17,6 +16,7 @@ TENSOR_COUNTER = 0
 # as the backend for our computations, this line will change in later homeworks
 
 NDArray = numpy.ndarray
+from .backend_selection import array_api, NDArray, default_device
 
 
 class Op:

@@ -102,7 +102,7 @@ class PowerScalar(TensorOp):
 
     def compute(self, a: NDArray) -> NDArray:
         # BEGIN YOUR SOLUTION
-        return a ** self.scalar
+        return a**self.scalar
         # END YOUR SOLUTION
 
     def gradient(self, out_grad: Tensor, node: Tensor):
@@ -127,7 +127,7 @@ class EWiseDiv(TensorOp):
     def gradient(self, out_grad, node):
         # BEGIN YOUR SOLUTION
         lhs, rhs = node.inputs
-        return out_grad / rhs, out_grad * (-1. * lhs / (rhs ** 2))
+        return out_grad / rhs, out_grad * (-1.0 * lhs / (rhs**2))
         # END YOUR SOLUTION
 
 
@@ -218,8 +218,7 @@ class BroadcastTo(TensorOp):
 
         axes = list(range(n2 - n1))
         # broadcasted
-        axes += list(reversed([i for i in range(n1)
-                     if node_value.shape[i] == 1]))
+        axes += list(reversed([i for i in range(n1) if node_value.shape[i] == 1]))
         return reshape(summation(out_grad, axes=tuple(axes)), node_value.shape)
         # END YOUR SOLUTION
 
@@ -231,7 +230,7 @@ def broadcast_to(a, shape):
 class Summation(TensorOp):
     def __init__(self, axes: Optional[tuple] = None):
         if isinstance(axes, int):
-            axes = (axes, )
+            axes = (axes,)
         self.axes = axes
 
     def compute(self, a):
@@ -239,7 +238,7 @@ class Summation(TensorOp):
         n = len(a.shape)
         axes = []
         if not isinstance(self.axes, tuple):
-            ori_axes = self.axes,
+            ori_axes = (self.axes,)
         else:
             ori_axes = self.axes
         for axis in ori_axes:
@@ -259,7 +258,7 @@ class Summation(TensorOp):
 
     def gradient(self, out_grad, node):
         # BEGIN YOUR SOLUTION
-        input, = node.inputs
+        (input,) = node.inputs
         if self.axes == None:
             axes = input.shape
             grad_shape = []
@@ -303,11 +302,9 @@ class MatMul(TensorOp):
         rhs_dim = len(rhs.shape)
 
         if grad_dim > lhs_dim:
-            lhs_grad = summation(
-                lhs_grad, axes=tuple(range(grad_dim - lhs_dim)))
+            lhs_grad = summation(lhs_grad, axes=tuple(range(grad_dim - lhs_dim)))
         if grad_dim > rhs_dim:
-            rhs_grad = summation(
-                rhs_grad, axes=tuple(range(grad_dim - rhs_dim)))
+            rhs_grad = summation(rhs_grad, axes=tuple(range(grad_dim - rhs_dim)))
 
         return lhs_grad, rhs_grad
         # END YOUR SOLUTION
@@ -374,10 +371,12 @@ class ReLU(TensorOp):
     def gradient(self, out_grad, node):
         # BEGIN YOUR SOLUTION
         node_value = node.inputs[0]
-        return out_grad * Tensor(node_value.realize_cached_data() > 0,
-                                 device=node.device,
-                                 dtype=node.dtype,
-                                 required_grad=node.requires_grad)
+        return out_grad * Tensor(
+            node_value.realize_cached_data() > 0,
+            device=node.device,
+            dtype=node.dtype,
+            required_grad=node.requires_grad,
+        )
         # END YOUR SOLUTION
 
 
@@ -393,10 +392,9 @@ class Tanh(TensorOp):
 
     def gradient(self, out_grad, node):
         # BEGIN YOUR SOLUTION
-        input, = node.inputs
+        (input,) = node.inputs
         tmp = tanh(input)
-        one_arr = ones(*out_grad.shape, device=out_grad.device,
-                       requires_grad=False)
+        one_arr = ones(*out_grad.shape, device=out_grad.device, requires_grad=False)
         return out_grad * (one_arr - tmp * tmp)
         # END YOUR SOLUTION
 
@@ -472,8 +470,7 @@ class Split(TensorTupleOp):
 
         for i in range(n):
             idxes[self.axis] = i
-            data = array_api.array(
-                A[tuple(idxes)], dtype=A.dtype, device=A.device)
+            data = array_api.array(A[tuple(idxes)], dtype=A.dtype, device=A.device)
             data = array_api.reshape(data, new_shape)
             new_arr.append(data)
 
@@ -587,24 +584,25 @@ class Conv(TensorOp):
     def compute(self, A, B):
         # BEGIN YOUR SOLUTION
         # Do not pad batch and channel dimensions.
-        axes = ((0, 0), (self.padding, self.padding),
-                (self.padding, self.padding), (0, 0))
+        axes = (
+            (0, 0),
+            (self.padding, self.padding),
+            (self.padding, self.padding),
+            (0, 0),
+        )
         A = A.pad(axes)
         N, H, W, C_in = A.shape
         K, _, _, C_out = B.shape  # square kernel by convention
         Ns, Hs, Ws, Cs = A.strides
 
-        _H, _W = (H - K) // self.stride + 1, \
-                 (W - K) // self.stride + 1
+        _H, _W = (H - K) // self.stride + 1, (W - K) // self.stride + 1
         inner_dim = K * K * C_in
-        _A = A.as_strided(shape=(N, _H, _W, K, K, C_in),
-                          strides=(Ns, Hs * self.stride,
-                                   Ws * self.stride,
-                                   Hs,
-                                   Ws, Cs)).compact()
+        _A = A.as_strided(
+            shape=(N, _H, _W, K, K, C_in),
+            strides=(Ns, Hs * self.stride, Ws * self.stride, Hs, Ws, Cs),
+        ).compact()
         _A = _A.reshape((-1, inner_dim))
         B = B.compact().reshape((-1, C_out))
-        print(_A.dtype, B.dtype)
         out = _A @ B
         return out.reshape((N, _H, _W, C_out))
         # END YOUR SOLUTION
@@ -630,12 +628,20 @@ class Conv(TensorOp):
         p_B = (h + k - tmp - 1) // 2
         p_A = (k + tmp - h - 1) // 2
         # bhwc2, kkc2c1 -> bhwc1
-        grad_A = conv(out_grad_dilate, Tensor(
-            B, dtype=out_grad.dtype, device=out_grad.device), stride=1, padding=p_B)
+        grad_A = conv(
+            out_grad_dilate,
+            Tensor(B, dtype=out_grad.dtype, device=out_grad.device),
+            stride=1,
+            padding=p_B,
+        )
         # bhwc2 -> whbc2 -> hwbc2: out_grad_dilate.transpose((0, 2)).transpose((0, 1))
         # c1hwb, hwbc2 -> c1hwc2
-        grad_B = conv(Tensor(A, dtype=out_grad.dtype, device=out_grad.device),
-                      out_grad_dilate.transpose((0, 2)).transpose((0, 1)), stride=1, padding=p_A)
+        grad_B = conv(
+            Tensor(A, dtype=out_grad.dtype, device=out_grad.device),
+            out_grad_dilate.transpose((0, 2)).transpose((0, 1)),
+            stride=1,
+            padding=p_A,
+        )
         # c1hwc2 -> whc1c2 -> hwc1c2
         grad_B = grad_B.transpose((0, 2)).transpose((0, 1))
 
