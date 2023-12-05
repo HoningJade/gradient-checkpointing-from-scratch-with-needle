@@ -63,27 +63,26 @@ class Adam(Optimizer):
         self.eps = eps
         self.weight_decay = weight_decay
         self.t = 0
-
         self.m = {}
         self.v = {}
 
     def step(self):
-        # BEGIN YOUR SOLUTION
+        ### BEGIN YOUR SOLUTION
         self.t += 1
-        for p in self.params:
-            if p.grad is None:
-                continue
-            p_id = id(p)
-            # second term only if L2 regularization
-            grad = p.grad.data + self.weight_decay * p.data
-            grad = ndl.Tensor(grad, dtype=p.data.dtype)
-            self.m[p_id] = self.beta1 * \
-                self.m.get(p_id, 0.) + (1. - self.beta1) * grad
-            self.v[p_id] = self.beta2 * \
-                self.v.get(p_id, 0.) + (1. - self.beta2) * grad ** 2
-            m_hat = self.m[p_id] / (1. - self.beta1 ** self.t)
-            v_hat = self.v[p_id] / (1. - self.beta2 ** self.t)
-            # if use weight-decay:
-            #   p.data -= self.lr * self.weight_decay * p.data
-            p.data -= self.lr * m_hat / (v_hat ** 0.5 + self.eps)
-        # END YOUR SOLUTION
+        for param in self.params:
+          if self.weight_decay > 0:
+            grad = param.grad.data + self.weight_decay * param.data
+          else:
+            grad = param.grad.data
+
+          self.m[param] = (
+            self.beta1 * self.m.get(param, 0.) + ( 1 - self.beta1 ) * grad
+          )
+          self.v[param] = (
+            self.beta2 * self.v.get(param, 0.) + ( 1 - self.beta2 ) * ( grad ** 2 )
+          )
+
+          m_param_hat = self.m[param] / ( 1 - self.beta1 ** self.t )
+          v_param_hat = self.v[param] / ( 1 - self.beta2 ** self.t )
+
+          param.data = param.data - self.lr * m_param_hat / (v_param_hat**0.5 + self.eps)
