@@ -1,4 +1,3 @@
-更快速地找到所需内容 … 首页是您的新着陆页，会显示与您最相关的文件和文件夹
 """hw1/apps/simple_ml.py"""
 import tracemalloc
 
