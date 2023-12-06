@@ -14,7 +14,6 @@ class Optimizer:
         for p in self.params:
             p.grad = None
 
-
 class SGD(Optimizer):
     def __init__(self, params, lr=0.01, momentum=0.0, weight_decay=0.0):
         super().__init__(params)
@@ -24,26 +23,26 @@ class SGD(Optimizer):
         self.weight_decay = weight_decay
 
     def step(self):
-        # BEGIN YOUR SOLUTION
-        for p in self.params:
-            if p.grad is None:
-                continue
-            p_id = id(p)
-            grad = (1. - self.momentum) * \
-                (p.grad.data + self.weight_decay * p.data)
-            grad += self.momentum * self.u.get(p_id, 0.)
-            grad = ndl.Tensor(grad, dtype=p.data.dtype)
-            p.data -= self.lr * grad
-            self.u[p_id] = grad
-        # END YOUR SOLUTION
+        ### BEGIN YOUR SOLUTION
+        for param in self.params:
+          if self.weight_decay > 0:
+            grad = param.grad.data + self.weight_decay * param.data
+          else:
+            grad = param.grad.data
+          
+          self.u[param] = (
+            self.momentum * self.u.get(param, 0) + (1 - self.momentum) * grad
+          )
+          param.data = param.data - self.lr * self.u[param]
+        ### END YOUR SOLUTION
 
     def clip_grad_norm(self, max_norm=0.25):
         """
         Clips gradient norm of parameters.
         """
-        # BEGIN YOUR SOLUTION
+        ### BEGIN YOUR SOLUTION
         raise NotImplementedError()
-        # END YOUR SOLUTION
+        ### END YOUR SOLUTION
 
 
 class Adam(Optimizer):

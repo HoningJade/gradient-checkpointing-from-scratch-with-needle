@@ -104,11 +104,17 @@ class Value:
         # avoid recomputation
         if self.cached_data is not None:
             return self.cached_data
+        
         # note: data implicitly calls realized cached data
-        self.cached_data = self.op.compute(
-            *[x.realize_cached_data() for x in self.inputs]
-        )
-        return self.cached_data
+        if self.drop:
+            return self.op.compute(
+                *[x.realize_cached_data() for x in self.inputs]
+            )
+        else:
+            self.cached_data = self.op.compute(
+                *[x.realize_cached_data() for x in self.inputs]
+            )
+            return self.cached_data
 
     def is_leaf(self):
         return self.op is None
@@ -159,6 +165,10 @@ class Value:
             if not value.requires_grad:
                 return value.detach()
             value.realize_cached_data()
+        else:
+            if not value.requires_grad:
+                return value.detach()
+
         return value
 
 
@@ -245,6 +255,9 @@ class Tensor(Value):
             if not tensor.requires_grad:
                 return tensor.detach()
             tensor.realize_cached_data()
+        else:
+            if not tensor.requires_grad:
+                return tensor.detach()
         return tensor
 
     @staticmethod
@@ -384,13 +397,23 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
-    # gradient checkpointing
+    # sum([node.cached_data is None for node in reverse_topo_order])
+    
+    # used when lazy mode is off (gradient checkpointing)
     for node in reverse_topo_order:
         if node.drop:
             node.cached_data = None
-            
+    
+    # import math
+    # drop_shapes = [node.shape for node in reverse_topo_order if node.drop]
+    # drop_sum = sum([math.prod(s) for s in drop_shapes])
+    # keep_shapes = [node.shape for node in reverse_topo_order if not node.drop]
+    # keep_sum = sum([math.prod(s) for s in keep_shapes])
+    # print(keep_sum / drop_sum)
+    
+    gc = sum([node.drop for node in reverse_topo_order])
     # BEGIN YOUR SOLUTION
-    for node in reverse_topo_order:
+    for ind, node in enumerate(reverse_topo_order):
         v_i = sum_node_list(node_to_output_grads_list[node])
 
         # Store the computed result in the grad field of each Variable.
@@ -401,10 +424,17 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
         if node.is_leaf():
             continue
+        
         gradients = node.op.gradient_as_tuple(v_i, node)
 
         for i, input in enumerate(node.inputs):
             node_to_output_grads_list[input].append(gradients[i])
+
+        if gc > 0 and ind > 0:
+            for i in range(ind):
+                if reverse_topo_order[i].op is not None:
+                    reverse_topo_order[i].cached_data = None
+
     # END YOUR SOLUTION
 
 

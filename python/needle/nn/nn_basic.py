@@ -7,13 +7,14 @@ import needle.init as init
 import numpy as np
 
 # utils for gradient checkpointing
-def annotate(out_node, in_node):
-    if out_node is in_node:
-        return 
+def annotate(out_node, in_nodes):
+    for in_node in in_nodes:
+        if out_node is in_node:
+            return 
     
     for node in out_node.inputs:
         node.drop = node.op is not None
-        annotate(node, in_node)
+        annotate(node, in_nodes)
             
 class Parameter(Tensor):
     """A special kind of tensor that represents parameters."""
@@ -111,6 +112,8 @@ class Linear(Module):
         if self.bias:
             bias = ops.broadcast_to(self.bias, Y.shape)
             Y += bias
+        if self.gc:
+            annotate(Y, (X,))
         return Y
         # END YOUR SOLUTION
 
@@ -130,7 +133,7 @@ class ReLU(Module):
         # BEGIN YOUR SOLUTION
         output = ops.relu(x)
         if self.gc:
-            annotate(output, x)
+            annotate(output, (x,))
         return output
         # END YOUR SOLUTION
 
@@ -267,7 +270,7 @@ class LayerNorm1d(Module):
         output = weight * x_normalized + bias
         
         if self.gc:
-            annotate(output, x)
+            annotate(output, (x,))
         
         return output
         # END YOUR SOLUTION

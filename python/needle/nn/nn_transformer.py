@@ -13,9 +13,11 @@ from .nn_basic import (
     Dropout,
     LayerNorm1d,
     Linear,
-    Sequential
+    Sequential,
+    annotate
 )
 
+# needle.autograd.LAZY_MODE = True
 
 class MultiHeadAttention(Module):
     """
@@ -117,6 +119,9 @@ class MultiHeadAttention(Module):
         else:
             mask = init.zeros(*QK_T.shape, device=QK_T.device, dtype=QK_T.dtype)
         attn = self.softmax(QK_T / d ** .5 + mask)
+        
+        if self.gc:
+            annotate(attn, (q, v))
 
         probs = self.dropout(attn)
         result = self.matmul(probs, v.transpose((2,3)))
@@ -356,7 +361,7 @@ class Transformer(Module):
         batch_size, seq_len, _ = x.shape
         pos = np.tile(np.arange(seq_len), (batch_size, 1))
         pos = ndarray.array(pos, device=x.device)
-        x += self.pos_embedding(pos)
+        x = x + self.pos_embedding(pos)
         x = self.transformer_layers(x)
         ### END YOUR SOLUTION
 
@@ -367,5 +372,5 @@ class Transformer(Module):
 
     def enable_gc(self):
         for mod in self.transformer_layers._children():
-            if isinstance(mod, (needle.nn.nn_basic.LayerNorm1d, needle.nn.nn_basic.ReLU)):
+            if isinstance(mod, (needle.nn.nn_basic.LayerNorm1d, needle.nn.nn_basic.ReLU, needle.nn.nn_basic.Linear)):
                 mod.enable_gc()
