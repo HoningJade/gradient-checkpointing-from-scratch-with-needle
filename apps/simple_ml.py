@@ -275,7 +275,7 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
             h, c = hidden
             hidden = (h.detach(), c.detach())
         else:
-            hidden = hidden.detach()
+            hidden = hidden.detach() 
         
         loss = loss_fn()(y_pred, y)
         
