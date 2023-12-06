@@ -176,27 +176,27 @@ def evaluate_cifar10(model, dataloader, loss_fn=nn.SoftmaxLoss):
     ### END YOUR SOLUTION
 
 
-### PTB training ###
-def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=None,
-                      clip=None, device=None, dtype="float32"):
-    """
-    Iterates over the data. If optimizer is not None, sets the
-    model to train mode, and for each batch updates the model parameters.
-    If optimizer is None, sets the model to eval mode, and simply computes
-    the loss/accuracy.
+# ### PTB training ###
+# def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=None,
+#                       clip=None, device=None, dtype="float32"):
+#     """
+#     Iterates over the data. If optimizer is not None, sets the
+#     model to train mode, and for each batch updates the model parameters.
+#     If optimizer is None, sets the model to eval mode, and simply computes
+#     the loss/accuracy.
 
-    Args:
-        data: data of shape (nbatch, batch_size) given from batchify function
-        model: LanguageModel instance
-        seq_len: i.e. bptt, sequence length
-        loss_fn: nn.Module instance
-        opt: Optimizer instance (optional)
-        clip: max norm of gradients (optional)
+#     Args:
+#         data: data of shape (nbatch, batch_size) given from batchify function
+#         model: LanguageModel instance
+#         seq_len: i.e. bptt, sequence length
+#         loss_fn: nn.Module instance
+#         opt: Optimizer instance (optional)
+#         clip: max norm of gradients (optional)
 
-    Returns:
-        avg_acc: average accuracy over dataset
-        avg_loss: average loss over dataset
-    """
+#     Returns:
+#         avg_acc: average accuracy over dataset
+#         avg_loss: average loss over dataset
+#     """
     # np.random.seed(4)
     # # BEGIN YOUR SOLUTION
     # if opt:
@@ -239,7 +239,91 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
     # print('peak memory:', peak_mem)
 
     # return avg_acc / cnt, np.sum(avg_loss) / cnt
-    ### PTB training ###
+
+# ### PTB training ###
+# def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=None,
+#         clip=None, device=None, dtype="float32"):
+#     """
+#     Iterates over the data. If optimizer is not None, sets the
+#     model to train mode, and for each batch updates the model parameters.
+#     If optimizer is None, sets the model to eval mode, and simply computes
+#     the loss/accuracy.
+
+#     Args:
+#         data: data of shape (nbatch, batch_size) given from batchify function
+#         model: LanguageModel instance
+#         seq_len: i.e. bptt, sequence length
+#         loss_fn: nn.Module instance
+#         opt: Optimizer instance (optional)
+#         clip: max norm of gradients (optional)
+
+#     Returns:
+#         avg_acc: average accuracy over dataset
+#         avg_loss: average loss over dataset
+#     """
+#     np.random.seed(4)
+#     ### BEGIN YOUR SOLUTION
+#     losses = []
+#     corrects = []
+#     dataset_size = 0
+#     train = opt is not None
+#     if train:
+#         model.train()
+#     else:
+#         model.eval()
+    
+#     f = loss_fn()
+#     avg_loss = []
+#     avg_acc = 0
+#     cnt = 0
+#     n = data.shape[0]
+#     i = 0
+#     peak_mem = 0
+#     memo = []
+#     hidden = None
+#     for i in tqdm(range(0, n, seq_len)):
+#         if opt:
+#             opt.reset_grad()
+#         # (l, b), (l * b, )
+#         x, y = ndl.data.get_batch(data, i, seq_len, device=device, dtype=dtype)
+
+#         batch_size = y.shape[0]
+#         dataset_size += batch_size
+#         y_pred, hidden = model(x, hidden)
+#         # detach the hidden state to avoid blowing up computational graph
+#         # between training on different sequences
+#         if isinstance(hidden, tuple):
+#             h, c = hidden
+#             hidden = (h.detach(), c.detach())
+#         else:
+#             hidden = hidden.detach() 
+        
+#         loss = loss_fn()(y_pred, y)
+        
+#         if train:
+#             opt.reset_grad()
+#             loss.backward()
+#             opt.step()
+#         cnt += b
+#         avg_loss.append(loss.numpy().item() * b)
+#         avg_acc += np.sum(y_.numpy().argmax(axis=1) == y.numpy())
+
+#         GPUs = GPU.getGPUs()
+        
+#         for gpu in GPUs:
+#           # print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
+
+#           peak_mem = max(gpu.memoryUsed, peak_mem)
+        
+#         memo.append(gpu.memoryUsed)
+#         # i += seq_len
+    
+#     print('peak memory:', peak_mem)
+
+#     return avg_acc / cnt, np.sum(avg_loss) / cnt, memo
+#     # END YOUR SOLUTION
+
+### PTB training ###
 def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=None,
         clip=None, device=None, dtype="float32"):
     """
@@ -266,23 +350,18 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
     corrects = []
     dataset_size = 0
     train = opt is not None
+    peak_mem = 0
+    memo = []
     if train:
         model.train()
     else:
         model.eval()
     
-    f = loss_fn()
-    avg_loss = []
-    avg_acc = 0
-    cnt = 0
-    n = data.shape[0]
-    i = 0
-    peak_mem = 0
-    memo = []
-    for i in tqdm(range(0, n, seq_len)):
-        if opt:
-            opt.reset_grad()
-        # (l, b), (l * b, )
+    nbatch, batch_size = data.shape
+    
+    hidden = None
+
+    for i in tqdm(range(0, nbatch - 1, seq_len)):
         x, y = ndl.data.get_batch(data, i, seq_len, device=device, dtype=dtype)
 
         batch_size = y.shape[0]
@@ -294,7 +373,7 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
             h, c = hidden
             hidden = (h.detach(), c.detach())
         else:
-            hidden = hidden.detach() 
+            hidden = hidden.detach()
         
         loss = loss_fn()(y_pred, y)
         
@@ -302,25 +381,25 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
             opt.reset_grad()
             loss.backward()
             opt.step()
-        cnt += b
-        avg_loss.append(loss.numpy().item() * b)
-        avg_acc += np.sum(y_.numpy().argmax(axis=1) == y.numpy())
 
+        losses.append(loss.numpy() * batch_size)
+        correct = np.sum(y_pred.numpy().argmax(axis = 1) == y.numpy())
+        corrects.append(correct)
+        
         GPUs = GPU.getGPUs()
         
-        for gpu in GPUs:
-          # print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
-
-          peak_mem = max(gpu.memoryUsed, peak_mem)
+        for gpu in GPUs[:1]:
+            print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
+            peak_mem = max(gpu.memoryUsed, peak_mem)
         
         memo.append(gpu.memoryUsed)
-        # i += seq_len
     
     print('peak memory:', peak_mem)
 
-    return avg_acc / cnt, np.sum(avg_loss) / cnt, memo
-    # END YOUR SOLUTION
-
+    avg_acc = np.sum(np.array(corrects)) / dataset_size
+    avg_loss = np.sum(np.array(losses)) / dataset_size
+    return avg_acc, avg_loss, memo
+    ### END YOUR SOLUTION
 
 def train_ptb(model, data, seq_len=40, n_epochs=1, optimizer=ndl.optim.SGD,
               lr=4.0, weight_decay=0.0, loss_fn=nn.SoftmaxLoss, clip=None,
