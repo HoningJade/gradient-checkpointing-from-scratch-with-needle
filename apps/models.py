@@ -6,63 +6,44 @@ import math
 import numpy as np
 np.random.seed(0)
 
-
-
 class ResNet9(ndl.nn.Module):
     def __init__(self, device=None, dtype="float32"):
         super().__init__()
-        ### BEGIN YOUR SOLUTION 
-        self.ConvBN0 = nn.Sequential(
-            nn.Conv(3, 16, 7, 4, device=device, dtype=dtype), 
-            nn.BatchNorm2d(16, device=device, dtype=dtype), nn.ReLU(),
-            nn.Conv(16, 32, 3, 2, device=device, dtype=dtype),
-            nn.BatchNorm2d(32, device=device, dtype=dtype), nn.ReLU()
-        )
-        self.ConvBN1 = nn.Residual(
+        ### BEGIN YOUR SOLUTION ###
+        self.model = nn.Sequential(
+          nn.ConvBN(3, 16, 7, 4, device=device),
+          nn.ConvBN(16, 32, 3, 2, device=device),
+          nn.Residual(
             nn.Sequential(
-                nn.Conv(32, 32, 3, 1, device=device, dtype=dtype), 
-                nn.BatchNorm2d(32, device=device, dtype=dtype), nn.ReLU(),
-                nn.Conv(32, 32, 3, 1, device=device, dtype=dtype), 
-                nn.BatchNorm2d(32, device=device, dtype=dtype), nn.ReLU()
+              nn.ConvBN(32, 32, 3, 1, device=device),
+              nn.ConvBN(32, 32, 3, 1, device=device)
             )
-        )
-        self.ConvBN2 = nn.Sequential(
-            nn.Conv(32, 64, 3, 2, device=device, dtype=dtype), 
-            nn.BatchNorm2d(64, device=device, dtype=dtype), nn.ReLU(),
-            nn.Conv(64, 128, 3, 2, device=device, dtype=dtype), 
-            nn.BatchNorm2d(128, device=device, dtype=dtype), nn.ReLU()
-        )
-        self.ConvBN3 = nn.Residual(
+          ),
+          nn.ConvBN(32, 64, 3, 2, device=device),
+          nn.ConvBN(64, 128, 3, 2, device=device),
+          nn.Residual(
             nn.Sequential(
-                nn.Conv(128, 128, 3, 1, device=device, dtype=dtype), 
-                nn.BatchNorm2d(128, device=device, dtype=dtype), nn.ReLU(),
-                nn.Conv(128, 128, 3, 1, device=device, dtype=dtype), 
-                nn.BatchNorm2d(128, device=device, dtype=dtype), nn.ReLU()
+              nn.ConvBN(128, 128, 3, 1, device=device),
+              nn.ConvBN(128, 128, 3, 1, device=device)
             )
+          ),
+          nn.Flatten(),
+          nn.Linear(128, 128, device=device),
+          nn.ReLU(),
+          nn.Linear(128, 10, device=device)
         )
-        self.Linear0 = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128, 128, device=device, dtype=dtype), 
-            nn.ReLU(), 
-            nn.Linear(128, 10, device=device, dtype=dtype)
-        )
-        
+
         ### END YOUR SOLUTION
 
     def forward(self, x):
         ### BEGIN YOUR SOLUTION
-        x = self.ConvBN0(x)
-        x = self.ConvBN1(x)
-        x = self.ConvBN2(x)
-        x = self.ConvBN3(x)
-        x = self.Linear0(x)
-        return x
+        return self.model(x)
         ### END YOUR SOLUTION
 
 
 class LanguageModel(nn.Module):
     def __init__(self, embedding_size, output_size, hidden_size, num_layers=1,
-                 seq_model='rnn', device=None, dtype="float32"):
+                 seq_model='rnn', seq_len=40, use_gc=False, device=None, dtype="float32"):
         """
         Consists of an embedding layer, a sequence model (either RNN or LSTM), and a
         linear layer.
@@ -75,13 +56,24 @@ class LanguageModel(nn.Module):
         """
         super(LanguageModel, self).__init__()
         ### BEGIN YOUR SOLUTION
-        self.embedding = nn.Embedding(output_size, embedding_size, device=device, dtype=dtype)
-        if seq_model == "rnn":
-            seq_model = nn.RNN
+        self.output_size = output_size
+        self.hidden_size = hidden_size
+        self.embedding_size = embedding_size
+        self.seq_model_name = seq_model
+        self.embed = nn.Embedding(output_size, embedding_size, device=device, dtype=dtype)
+        if seq_model == 'transformer':
+          self.seq_model = nn.Transformer(embedding_size, hidden_size, num_layers, device=device, dtype=dtype)
+          if use_gc:
+              self.seq_model.enable_gc()
+        elif seq_model == "rnn":
+          self.seq_model = nn.RNN(embedding_size, hidden_size, num_layers=num_layers, device=device, dtype=dtype)
         else:
-            seq_model = nn.LSTM
-        self.seq_model = seq_model(embedding_size, hidden_size, num_layers, device=device, dtype=dtype)
-        self.out_proj = nn.Linear(hidden_size, output_size, device=device, dtype=dtype)
+          self.seq_model = nn.LSTM(embedding_size, hidden_size, num_layers=num_layers, device=device, dtype=dtype)
+        
+        if seq_model == 'transformer':
+          self.linear = nn.Linear(embedding_size, output_size, device=device, dtype=dtype)
+        else:
+          self.linear = nn.Linear(hidden_size, output_size, device=device, dtype=dtype)
         ### END YOUR SOLUTION
 
     def forward(self, x, h=None):
@@ -98,21 +90,17 @@ class LanguageModel(nn.Module):
             else h is tuple of (h0, c0), each of shape (num_layers, bs, hidden_size)
         """
         ### BEGIN YOUR SOLUTION
-        l, b = x.shape
-        # l, b -> l, b, d
-        embedding = self.embedding(x)
-        # l * b, d
-        feature, h = self.seq_model(embedding, h)
-        d = feature.shape[-1]
-        # l, b, d -> l * b, d
-        feature = ndl.ops.reshape(feature, (l * b, d))
-        # l * b, d
-        output = self.out_proj(feature)
-        # l * b, d -> l, b, d
-        # output = ndl.ops.reshape(output, (l, b, d))
-        
-        return output, h
+        seq_len, bs = x.shape
+
+        x = self.embed(x)
+        x, h = self.seq_model(x, h)
+        if self.seq_model_name == 'transformer':
+          x = self.linear(x.reshape((seq_len * bs, self.embedding_size)))
+        else:
+          x = self.linear(x.reshape((seq_len * bs, self.hidden_size)))
+        return x, h
         ### END YOUR SOLUTION
+
 
 if __name__ == "__main__":
     model = ResNet9()

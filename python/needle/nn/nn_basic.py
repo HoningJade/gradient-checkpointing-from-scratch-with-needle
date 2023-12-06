@@ -6,7 +6,15 @@ from needle import ops
 import needle.init as init
 import numpy as np
 
-
+# utils for gradient checkpointing
+def annotate(out_node, in_node):
+    if out_node is in_node:
+        return 
+    
+    for node in out_node.inputs:
+        node.drop = node.op is not None
+        annotate(node, in_node)
+            
 class Parameter(Tensor):
     """A special kind of tensor that represents parameters."""
 
@@ -52,6 +60,7 @@ def _child_modules(value: object) -> List["Module"]:
 class Module:
     def __init__(self):
         self.training = True
+        self.gc = False
 
     def parameters(self) -> List[Tensor]:
         """Return the list of parameters in the module."""
@@ -69,7 +78,10 @@ class Module:
         self.training = True
         for m in self._children():
             m.training = True
-
+    
+    def enable_gc(self):
+        self.gc = True
+        
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
@@ -116,7 +128,10 @@ class Flatten(Module):
 class ReLU(Module):
     def forward(self, x: Tensor) -> Tensor:
         # BEGIN YOUR SOLUTION
-        return ops.relu(x)
+        output = ops.relu(x)
+        if self.gc:
+            annotate(output, x)
+        return output
         # END YOUR SOLUTION
 
 
@@ -222,7 +237,7 @@ class BatchNorm2d(BatchNorm1d):
 
 
 class LayerNorm1d(Module):
-    def __init__(self, dim, eps=1e-5, device=None, dtype="float32"):
+    def __init__(self, dim, eps=1e-5, device=None, dtype="float32", gc=False):
         super().__init__()
         self.dim = dim
         self.eps = eps
@@ -249,7 +264,12 @@ class LayerNorm1d(Module):
         weight = ops.broadcast_to(
             self.weight.reshape(broadcast_shape), x.shape)
         bias = ops.broadcast_to(self.bias.reshape(broadcast_shape), x.shape)
-        return weight * x_normalized + bias
+        output = weight * x_normalized + bias
+        
+        if self.gc:
+            annotate(output, x)
+        
+        return output
         # END YOUR SOLUTION
 
 

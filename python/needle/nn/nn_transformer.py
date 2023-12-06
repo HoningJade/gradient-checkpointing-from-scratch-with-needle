@@ -2,6 +2,7 @@ from typing import List
 from needle.autograd import Tensor
 import needle.backend_ndarray.ndarray as ndarray
 from needle import ops
+import needle
 import needle.init as init
 import numpy as np
 from .nn_sequence import Embedding
@@ -329,6 +330,7 @@ class Transformer(Module):
         ### BEGIN YOUR SOLUTION
         self.pos_embedding = Embedding(
             sequence_len, embedding_size, device=device, dtype=dtype)
+        
         transformer_list = [TransformerLayer(q_features=embedding_size,
                                              num_head=num_head,
                                              dim_head=dim_head,
@@ -362,3 +364,8 @@ class Transformer(Module):
             x = ops.transpose(x, axes=(0, 1))
 
         return x, init.zeros_like(x)
+
+    def enable_gc(self):
+        for mod in self.transformer_layers._children():
+            if isinstance(mod, (needle.nn.nn_basic.LayerNorm1d, needle.nn.nn_basic.ReLU)):
+                mod.enable_gc()

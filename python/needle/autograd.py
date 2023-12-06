@@ -97,6 +97,7 @@ class Value:
     # dynamic computation
     cached_data: NDArray
     requires_grad: bool
+    drop: bool = False
 
     def realize_cached_data(self):
         """Run compute to realize the cached data"""
@@ -123,7 +124,8 @@ class Value:
         *,
         num_outputs: int = 1,
         cached_data: List[object] = None,
-        requires_grad: Optional[bool] = None
+        requires_grad: Optional[bool] = None,
+        drop: bool = False
     ):
         global TENSOR_COUNTER
         TENSOR_COUNTER += 1
@@ -134,6 +136,8 @@ class Value:
         self.num_outputs = num_outputs
         self.cached_data = cached_data
         self.requires_grad = requires_grad
+        self.drop = drop
+        
 
     @classmethod
     def make_const(cls, data, *, requires_grad=False):
@@ -380,7 +384,11 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
-
+    # gradient checkpointing
+    for node in reverse_topo_order:
+        if node.drop:
+            node.cached_data = None
+            
     # BEGIN YOUR SOLUTION
     for node in reverse_topo_order:
         v_i = sum_node_list(node_to_output_grads_list[node])
