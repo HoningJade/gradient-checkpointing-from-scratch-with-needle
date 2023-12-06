@@ -13,8 +13,20 @@ import GPUtil as GPU
 import needle.nn as nn
 from apps.models import *
 import time
-from tqdm import tqdm
 # device = ndl.cpu()
+import matplotlib.pyplot as plt
+def plot_memory(mem):
+  batches = [i for i in range(len(mem))]
+  print(len(batches))
+  plt.plot(batches, mem, label='memory taken', marker='o', linestyle='-')
+
+  plt.xlabel('Batch', fontsize=12)
+  plt.ylabel('GPU memory usage', fontsize=12)
+  plt.title('GPU memory over batches')
+  plt.legend(fontsize=12)
+  plt.grid(True)
+  plt.savefig("memory")
+  plt.show()
 
 GPUs = GPU.getGPUs()
         
@@ -259,11 +271,18 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
     else:
         model.eval()
     
-    nbatch, batch_size = data.shape
-    
-    hidden = None
+    f = loss_fn()
+    avg_loss = []
+    avg_acc = 0
+    cnt = 0
+    n = data.shape[0]
+    i = 0
     peak_mem = 0
-    for i in tqdm(range(0, nbatch - 1, seq_len)):
+    memo = []
+    for i in tqdm(range(0, n, seq_len)):
+        if opt:
+            opt.reset_grad()
+        # (l, b), (l * b, )
         x, y = ndl.data.get_batch(data, i, seq_len, device=device, dtype=dtype)
 
         batch_size = y.shape[0]
@@ -283,21 +302,23 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
             opt.reset_grad()
             loss.backward()
             opt.step()
+        cnt += b
+        avg_loss.append(loss.numpy().item() * b)
+        avg_acc += np.sum(y_.numpy().argmax(axis=1) == y.numpy())
 
-        losses.append(loss.numpy() * batch_size)
-        correct = np.sum(y_pred.numpy().argmax(axis = 1) == y.numpy())
-        corrects.append(correct)
-        
         GPUs = GPU.getGPUs()
-        for gpu in GPUs[:1]:
-            print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
-            peak_mem = max(gpu.memoryUsed, peak_mem)
+        
+        for gpu in GPUs:
+          # print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
+
+          peak_mem = max(gpu.memoryUsed, peak_mem)
+        
+        memo.append(gpu.memoryUsed)
+        # i += seq_len
     
     print('peak memory:', peak_mem)
 
-    avg_acc = np.sum(np.array(corrects)) / dataset_size
-    avg_loss = np.sum(np.array(losses)) / dataset_size
-    return avg_acc, avg_loss
+    return avg_acc / cnt, np.sum(avg_loss) / cnt, memo
     # END YOUR SOLUTION
 
 
@@ -328,7 +349,7 @@ def train_ptb(model, data, seq_len=40, n_epochs=1, optimizer=ndl.optim.SGD,
     for e in range(n_epochs):
         print("epoch: ", e)
         start = time.time()
-        avg_acc, avg_loss = epoch_general_ptb(
+        avg_acc, avg_loss, memo = epoch_general_ptb(
             data=data,
             model=model,
             seq_len=seq_len,
