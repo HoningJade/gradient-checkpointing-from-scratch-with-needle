@@ -4,18 +4,19 @@ from typing import List, Callable, Any
 from needle.autograd import Tensor
 from needle import ops
 import needle.init as init
-import numpy as np
+
 
 # utils for gradient checkpointing
 def annotate(out_node, in_nodes):
     for in_node in in_nodes:
         if out_node is in_node:
-            return 
-    
+            return
+
     for node in out_node.inputs:
         node.drop = node.op is not None
         annotate(node, in_nodes)
-            
+
+
 class Parameter(Tensor):
     """A special kind of tensor that represents parameters."""
 
@@ -79,10 +80,10 @@ class Module:
         self.training = True
         for m in self._children():
             m.training = True
-    
+
     def enable_gc(self):
         self.gc = True
-        
+
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
@@ -100,10 +101,18 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
         # BEGIN YOUR SOLUTION
-        self.weight = Parameter(init.kaiming_uniform(
-            in_features, out_features), device=device, dtype=dtype)
-        self.bias = Parameter(ops.reshape(init.kaiming_uniform(
-            out_features, 1), (1, out_features)), device=device, dtype=dtype) if bias else None
+        self.weight = Parameter(
+            init.kaiming_uniform(in_features, out_features), device=device, dtype=dtype
+        )
+        self.bias = (
+            Parameter(
+                ops.reshape(init.kaiming_uniform(out_features, 1), (1, out_features)),
+                device=device,
+                dtype=dtype,
+            )
+            if bias
+            else None
+        )
         # END YOUR SOLUTION
 
     def forward(self, X: Tensor) -> Tensor:
@@ -157,8 +166,9 @@ class SoftmaxLoss(Module):
         n = logits.shape[0]
         m = logits.shape[-1]
         y_one_hot = init.one_hot(
-            m, y, device=logits.device, dtype=logits.dtype, requires_grad=False)
-        z_y = ops.summation(logits * y_one_hot, axes=(-1, ))
+            m, y, device=logits.device, dtype=logits.dtype, requires_grad=False
+        )
+        z_y = ops.summation(logits * y_one_hot, axes=(-1,))
         return ops.summation(ops.logsumexp(logits, axes=(-1,)) - z_y) / float(n)
         # END YOUR SOLUTION
 
@@ -196,32 +206,37 @@ class BatchNorm1d(Module):
 
             # moving average
             running_mean = ops.broadcast_to(
-                self.running_mean.reshape(broadcast_shape), x.shape).data
-            running_mean = (1 - self.momentum) * \
-                running_mean.data + self.momentum * x_mean.data
-            self.running_mean = ops.summation(
-                running_mean, axes=tuple(range(num_dim - 1))).data / c
+                self.running_mean.reshape(broadcast_shape), x.shape
+            ).data
+            running_mean = (
+                1 - self.momentum
+            ) * running_mean.data + self.momentum * x_mean.data
+            self.running_mean = (
+                ops.summation(running_mean, axes=tuple(range(num_dim - 1))).data / c
+            )
 
             x_var = ops.summation((x - x_mean) ** 2, axes=-2) / n
             x_var = ops.broadcast_to(x_var.reshape(stats_shape), x.shape)
             # moving average
-            running_var = ops.broadcast_to(ops.reshape(
-                self.running_var, broadcast_shape), x.shape).data
-            running_var = (1 - self.momentum) * \
-                running_var.data + self.momentum * x_var.data
-            self.running_var = ops.summation(
-                running_var, axes=tuple(range(num_dim - 1))).data / c
+            running_var = ops.broadcast_to(
+                ops.reshape(self.running_var, broadcast_shape), x.shape
+            ).data
+            running_var = (
+                1 - self.momentum
+            ) * running_var.data + self.momentum * x_var.data
+            self.running_var = (
+                ops.summation(running_var, axes=tuple(range(num_dim - 1))).data / c
+            )
         else:
             x_mean = ops.broadcast_to(
-                self.running_mean.reshape(broadcast_shape), x.shape)
-            x_var = ops.broadcast_to(
-                self.running_var.reshape(broadcast_shape), x.shape)
+                self.running_mean.reshape(broadcast_shape), x.shape
+            )
+            x_var = ops.broadcast_to(self.running_var.reshape(broadcast_shape), x.shape)
 
         # normalize
         x_normalize = (x - x_mean) / ops.power_scalar(x_var + self.eps, 0.5)
 
-        weight = ops.broadcast_to(
-            self.weight.reshape(broadcast_shape), x.shape)
+        weight = ops.broadcast_to(self.weight.reshape(broadcast_shape), x.shape)
         bias = ops.broadcast_to(self.bias.reshape(broadcast_shape), x.shape)
         return weight * x_normalize + bias
 
@@ -233,8 +248,7 @@ class BatchNorm2d(BatchNorm1d):
     def forward(self, x: Tensor):
         # nchw -> nhcw -> nhwc
         s = x.shape
-        _x = x.transpose((1, 2)).transpose(
-            (2, 3)).reshape((s[0] * s[2] * s[3], s[1]))
+        _x = x.transpose((1, 2)).transpose((2, 3)).reshape((s[0] * s[2] * s[3], s[1]))
         y = super().forward(_x).reshape((s[0], s[2], s[3], s[1]))
         return y.transpose((2, 3)).transpose((1, 2))
 
@@ -264,14 +278,13 @@ class LayerNorm1d(Module):
         x_var = ops.broadcast_to(x_var.reshape(stats_shape), x.shape)
         x_normalized = (x - x_mean) / ops.power_scalar(x_var + self.eps, 0.5)
 
-        weight = ops.broadcast_to(
-            self.weight.reshape(broadcast_shape), x.shape)
+        weight = ops.broadcast_to(self.weight.reshape(broadcast_shape), x.shape)
         bias = ops.broadcast_to(self.bias.reshape(broadcast_shape), x.shape)
         output = weight * x_normalized + bias
-        
+
         if self.gc:
             annotate(output, (x,))
-        
+
         return output
         # END YOUR SOLUTION
 
@@ -284,7 +297,7 @@ class Dropout(Module):
     def forward(self, x: Tensor) -> Tensor:
         # BEGIN YOUR SOLUTION
         if self.training:
-            prob = init.randb(*x.shape, p=1-self.p, device=x.device, dtype=x.dtype)
+            prob = init.randb(*x.shape, p=1 - self.p, device=x.device, dtype=x.dtype)
             return ops.multiply(x, prob) / (1 - self.p)
         else:
             return x

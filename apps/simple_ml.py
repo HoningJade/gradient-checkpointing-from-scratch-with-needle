@@ -1,36 +1,31 @@
 """hw1/apps/simple_ml.py"""
-import tracemalloc
 import gc
-import struct
-import gzip
-import numpy as np
-import torch
 import sys
+import numpy as np
 from tqdm import tqdm
+
 sys.path.append("python/")
 import needle as ndl
 import GPUtil as GPU
 import needle.nn as nn
 from apps.models import *
 import time
-# device = ndl.cpu()
 import matplotlib.pyplot as plt
 
-# import needle
-# needle.autograd.LAZY_MODE = False
 
 def plot_memory(mem):
-  batches = [i for i in range(len(mem))]
-  print(len(batches))
-  plt.plot(batches, mem, label='memory taken', marker='o', linestyle='-')
+    batches = [i for i in range(len(mem))]
+    print(len(batches))
+    plt.plot(batches, mem, label="memory taken", marker="o", linestyle="-")
 
-  plt.xlabel('Batch', fontsize=12)
-  plt.ylabel('GPU memory usage', fontsize=12)
-  plt.title('GPU memory over batches')
-  plt.legend(fontsize=12)
-  plt.grid(True)
-  plt.savefig("memory")
-  plt.show()
+    plt.xlabel("Batch", fontsize=12)
+    plt.ylabel("GPU memory usage", fontsize=12)
+    plt.title("GPU memory over batches")
+    plt.legend(fontsize=12)
+    plt.grid(True)
+    plt.savefig("memory")
+    plt.show()
+
 
 def parse_mnist(image_filesname, label_filename):
     """Read an images and labels file in MNIST format.  See this page:
@@ -108,6 +103,7 @@ def nn_epoch(X, y, W1, W2, lr=0.1, batch=100):
     raise NotImplementedError()
     ### END YOUR SOLUTION
 
+
 ### CIFAR-10 training ###
 def epoch_general_cifar10(dataloader, model, loss_fn=nn.SoftmaxLoss(), opt=None):
     """
@@ -132,8 +128,15 @@ def epoch_general_cifar10(dataloader, model, loss_fn=nn.SoftmaxLoss(), opt=None)
     ### END YOUR SOLUTION
 
 
-def train_cifar10(model, dataloader, n_epochs=1, optimizer=ndl.optim.Adam,
-          lr=0.001, weight_decay=0.001, loss_fn=nn.SoftmaxLoss):
+def train_cifar10(
+    model,
+    dataloader,
+    n_epochs=1,
+    optimizer=ndl.optim.Adam,
+    lr=0.001,
+    weight_decay=0.001,
+    loss_fn=nn.SoftmaxLoss,
+):
     """
     Performs {n_epochs} epochs of training.
 
@@ -176,8 +179,16 @@ def evaluate_cifar10(model, dataloader, loss_fn=nn.SoftmaxLoss):
 
 
 ### PTB training ###
-def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=None,
-        clip=None, device=None, dtype="float32"):
+def epoch_general_ptb(
+    data,
+    model,
+    seq_len=40,
+    loss_fn=nn.SoftmaxLoss(),
+    opt=None,
+    clip=None,
+    device=None,
+    dtype="float32",
+):
     """
     Iterates over the data. If optimizer is not None, sets the
     model to train mode, and for each batch updates the model parameters.
@@ -208,14 +219,21 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
         model.train()
     else:
         model.eval()
-    
+
     nbatch, batch_size = data.shape
-    
+
     hidden = None
 
     gpu = GPU.getGPUs()[0]
     base = gpu.memoryUsed
-    print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUsed / gpu.memoryTotal * 100, gpu.memoryTotal))
+    print(
+        "GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(
+            gpu.memoryFree,
+            gpu.memoryUsed,
+            gpu.memoryUsed / gpu.memoryTotal * 100,
+            gpu.memoryTotal,
+        )
+    )
     for i in tqdm(range(0, nbatch - 1, seq_len)):
         x, y = ndl.data.get_batch(data, i, seq_len, device=device, dtype=dtype)
 
@@ -224,48 +242,64 @@ def epoch_general_ptb(data, model, seq_len=40, loss_fn=nn.SoftmaxLoss(), opt=Non
         y_pred, hidden = model(x, hidden)
         # detach the hidden state to avoid blowing up computational graph
         # between training on different sequences
-        
+
         if isinstance(hidden, tuple):
             h, c = hidden
             hidden = (h.detach(), c.detach())
         else:
             hidden = hidden.detach()
-        
-        print(y_pred.cached_data is None)
+
         loss = loss_fn()(y_pred, y)
-        
+
         if train:
             opt.reset_grad()
             loss.backward()
-            
+
             GPUs = GPU.getGPUs()
             base = 0
             for gpu in GPUs[:1]:
-                
-                print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed - base, (gpu.memoryUsed - base) / gpu.memoryTotal * 100, gpu.memoryTotal))
+                print(
+                    "GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(
+                        gpu.memoryFree,
+                        gpu.memoryUsed - base,
+                        (gpu.memoryUsed - base) / gpu.memoryTotal * 100,
+                        gpu.memoryTotal,
+                    )
+                )
                 peak_mem = max(gpu.memoryUsed - base, peak_mem)
-            
+
                 memo.append(gpu.memoryUsed - base)
-        
+
             opt.step()
-            
+
         losses.append(loss.numpy() * batch_size)
-        correct = np.sum(y_pred.numpy().argmax(axis = 1) == y.numpy())
+        correct = np.sum(y_pred.numpy().argmax(axis=1) == y.numpy())
         corrects.append(correct)
-        
+
         del x, y, loss, y_pred, correct
         gc.collect()
-        
-    print('peak memory:', peak_mem)
+
+    print("peak memory:", peak_mem)
 
     avg_acc = np.sum(np.array(corrects)) / dataset_size
     avg_loss = np.sum(np.array(losses)) / dataset_size
     return avg_acc, avg_loss, memo
     ### END YOUR SOLUTION
 
-def train_ptb(model, data, seq_len=40, n_epochs=1, optimizer=ndl.optim.SGD,
-              lr=4.0, weight_decay=0.0, loss_fn=nn.SoftmaxLoss, clip=None,
-              device=None, dtype="float32"):
+
+def train_ptb(
+    model,
+    data,
+    seq_len=40,
+    n_epochs=1,
+    optimizer=ndl.optim.SGD,
+    lr=4.0,
+    weight_decay=0.0,
+    loss_fn=nn.SoftmaxLoss,
+    clip=None,
+    device=None,
+    dtype="float32",
+):
     """
     Performs {n_epochs} epochs of training.
 
@@ -303,15 +337,15 @@ def train_ptb(model, data, seq_len=40, n_epochs=1, optimizer=ndl.optim.SGD,
         )
         memos.extend(memo)
         end = time.time()
-        print("The time of execution of above program is :",
-      (end-start), "s")
-        
+        print("The time of execution of above program is :", (end - start), "s")
+
     return avg_acc, avg_loss, memos
     # END YOUR SOLUTION
 
 
-def evaluate_ptb(model, data, seq_len=40, loss_fn=nn.SoftmaxLoss,
-                 device=None, dtype="float32"):
+def evaluate_ptb(
+    model, data, seq_len=40, loss_fn=nn.SoftmaxLoss, device=None, dtype="float32"
+):
     """
     Computes the test accuracy and loss of the model.
 
@@ -327,8 +361,6 @@ def evaluate_ptb(model, data, seq_len=40, loss_fn=nn.SoftmaxLoss,
     """
     np.random.seed(4)
     # BEGIN YOUR SOLUTION
-    np.random.seed(4)
-    # BEGIN YOUR SOLUTION
     avg_acc, avg_loss, memo = epoch_general_ptb(
         data=data,
         model=model,
@@ -341,6 +373,7 @@ def evaluate_ptb(model, data, seq_len=40, loss_fn=nn.SoftmaxLoss,
     )
     return avg_acc, avg_loss, memo
     # END YOUR SOLUTION
+
 
 # CODE BELOW IS FOR ILLUSTRATION, YOU DO NOT NEED TO EDIT
 
