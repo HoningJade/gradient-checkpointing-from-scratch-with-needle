@@ -36,14 +36,37 @@ All we've done is to scale the loss down by a factor of `accumulation_steps`, ad
 - **Distributed Training**: With multiple GPUs, there are often better ways to utilize GPU memory with data/tensor parallelism. One example is the use of FullyShardedDataParallel in PyTorch (`torch.distributed.fsdp`), which mainly serves to scale up model training across nodes but brings the benefit of less idle memory at any point in time.
 - **Parameter Offloading**: When training large models with Adam optimizer, the optimizer state often takes up significant amount of GPU memory. Consequently, we can move the unused optimizer states to CPU and load it back to GPU when we need it.
 - **Model initialization at GPU at target precision**: When we instantiate a model in PyTorch, we usually create it on the CPU device first, and then we transfer it onto the target device and convert it to the desired precision. This can be inefficient considering the intermediate model representation in full precision on the CPU. Instead, we can directly create the model in desired precision on the target device (e.g., GPU). Several packages have implemented this method. For example, Lightning AI has the `Fabric` library with the `init_module()` function that directly loads the model into GPU.
-- **Gradient Checkpointing**: Gradient checkpointing is another popular method used to save memory, it mainly drops weights from certain layers during forward/backward pass.
+- **Gradient Checkpointing**[1]: Gradient checkpointing is another popular method used to save memory. It trades computation with memory. It selectively drops some of activations/weights from certain layers during forward/backward pass, and recomputes them on demand during backward. 
 
-![](demo.gif)
+# Gradient Checkpointing
 
-# Gradient Checkpointing details
-
-# PyTorch Implementation
+## PyTorch Implementation
 
 In PyTorch, we have the `torch.utils.checkpoint` module which can apply checkpointing on the entire model (as a list of `nn.module`) or part of the model. In its implementation, a context manager is used on the function level to save and load input/output tensors as well as arguments across multiple modules for backward propagation.
 
-# Model Architecture
+## Our software architecture and design
+
+We implemented gradient checkpoing to build memory-efficient Transformer, which is not included in the original gradient checkpointing paper [1] and can be considered new. More specifically, we applied gradient checkpoing to Layer Norm, ReLU, Linear, and Multi-head Attention layer in Transformer.
+
+Innn_transformer.py1 layer Transformer: [TO add Transformer] 191 nodes -> 89 are part of ReLU / LayerNorm1d
+
+With Needle, we first enabled lazy evaluation so that we won't save activations during forward computation until `realize_cached_data` is called. Since we set `LAZY_MODE` as True, we completed `make_from_op` method to enable the correct function of lazy evaluation. Then, we annotate tensors within module of interest. In `autograd.py`, we added a bool `drop` field whose default is False to the `Value` class. For all nodes in the modules, we add and set a `drop` property to True. In `nn_basic.py`, we wrapped up annotating nodes into an `annotate(out_node, in_nodes)` method for clean interface. We added a `gc` filed and `enable_gc` method to the `Module` class.In classes of layers we want to apply gradient checkpointing, we simply need to check that , we call `annotate`methodtoannotatenodesinthelayerif `gc` is True.
+
+[To add Segment]
+
+In forward propagation, we don’t save `cached_data` for those nodes and recompute them when necessary in backward. We achieved this by modifying `realize_cached_data` and `compute_gradient_of_variables` methods in `autograd.py`. The gif below illustrautes a process of our designed gradient checkpointing.
+
+![https://github.com/Criss-Wang/needle/blob/main/demo.gif](demo.gif)
+
+We measure GPU Peak memory usage with `GPUtil` and time cost with `time.time()`. 
+
+In `gc.py`, we wrote the codes of running experiments. This includes initializing Transformer LanguageModel, loading data, training the Transformer model, setting various arguments, and output results.
+
+# Experiments 
+
+We tested our model performance on PTB dataset with batch_size = 256, seq_len = 20, hidden size = 32. We trained our model for 3 epochs using Adam Optimizer and reported the average results across three runs.
+We evaluated Peak GPU memory usage during batch training (max. among epoch) and average time cost of each batch.
+
+# Results and Discussions
+
+# Conclusion and Future Work
