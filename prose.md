@@ -1,3 +1,5 @@
+# Memory-efficient Transformer with Gradient Checkpointing
+
 # Background
 
 After implementing the Transformer model and running it on PTB dataset, we found that it often leads to Out-of-Memory when trained using large batch size and Adam Opimizer. Further exploration leads us to the conclusion that in many transformer-based models, memory issue is one of the most common problem when the number of parameters in the model increases. For example, in OpenAI's 64 layers and 4 heads Transformer, the attentio memory usage is 9.6 GB for CIFAR-10 dataset with 32x32x3 pixel, 154 GB for the ImageNet dataset with 64x64x3 pixels. The amount of RAM needed for GPU to train the model is way beyond many GPU's ability in a non-commercial usage setting. Even for a few paragraphs's text with 1024 tokens, it would take 1 GB to store the intermediate embeddings. While many of the memory issue can be solve by tuning down the batch size, it is not always desirable. A very small batch size causes each batch to be a more “noisy” representation of the entire dataset, will cause a sort of “tug-and-pull” dynamic and hence leads to greater instability during training. In the meantime, smaller batch size often means longer training time as gradient is updated more frequently. Hence allowing a non-trivial batch size to be trained every iteration is often needed, and overcoming the memory bottleneck is necessary to achieve this.
@@ -48,7 +50,7 @@ In PyTorch, we have the `torch.utils.checkpoint` module [2] which can apply chec
 
 We implemented gradient checkpoing to build memory-efficient Transformer, which is not included in the original gradient checkpointing paper [1] and thus can be considered as new. Since transformers often contain many layers and it is very memory intensive to store the output $N \times N$ attention matrices from every intermediate layers of multi-head attention, we applied gradient checkpoing to Multi-head Attention layer, Layer Norm, ReLU, and Linear layers in Transformer.
 
-* With Needle, we first enabled lazy evaluation so that we won't save activations during forward computation until `realize_cached_data` is called. Since we set `LAZY_MODE` as True, we completed `make_from_op` method to enable the correct function of lazy evaluation. Then, we annotate tensors within module of interest. In `autograd.py`, we added a bool `drop` field whose default is False to the `Value` class. For all nodes in the modules, we add and set a `drop` property to True. In `nn_basic.py`, we wrapped up annotating nodes into an `annotate(out_node, in_nodes)` method for clean interface. We added a `gc` filed and `enable_gc` method to the `Module` class. Thanks to class inheritance, in classes of layers we want to apply gradient checkpointing, we simply need to call `annotate` method to annotate nodes in the layer if `gc` is True. As shown below, we enable selectively drop weights of nodes in layers by keeping activations of nodes every `segment_len`.
+* **Support gradient checkpointing for a wide range of necessary layers**: With Needle, we first enabled lazy evaluation so that we won't save activations during forward computation until `realize_cached_data` is called. Since we set `LAZY_MODE` as True, we completed `make_from_op` method to enable the correct function of lazy evaluation. Then, we annotate tensors within module of interest. In `autograd.py`, we added a bool `drop` field whose default is False to the `Value` class. For all nodes in the modules, we add and set a `drop` property to True. In `nn_basic.py`, we wrapped up annotating nodes into an `annotate(out_node, in_nodes)` method for clean interface. We added a `gc` filed and `enable_gc` method to the `Module` class. Thanks to class inheritance, in classes of layers we want to apply gradient checkpointing, we simply need to call `annotate` method to annotate nodes in the layer if `gc` is True. As shown below, we enable selectively drop weights of nodes in layers by keeping activations of nodes every `segment_len`.
 	```
 	# utils for gradient checkpointing
 	def annotate(out_node, in_nodes, cur_index=0, segment_len=None):
@@ -114,9 +116,9 @@ We implemented gradient checkpoing to build memory-efficient Transformer, which 
         return result, probs
 	```
 
-* 	The gif below illustrautes a process of our designed gradient checkpointing.
+* 	**Drop in forward and recompute in backward**: The gif below illustrautes a process of our designed gradient checkpointing.
 	![https://github.com/Criss-Wang/needle/blob/main/demo.gif](demo.gif). 
-	
+
 	In forward propagation, we don't save `cached_data` for those nodes and recompute them when necessary in backward. We achieved this by modifying `realize_cached_data` and `compute_gradient_of_variables` methods in `autograd.py` as follows. 
 	```
 	def compute_gradient_of_variables(output_tensor, out_grad):
@@ -183,7 +185,7 @@ We implemented gradient checkpoing to build memory-efficient Transformer, which 
 							return self.cached_data
 	```
 
-* In `nn_transformer.py`, we implemented the memory efficient Transformer model. A one-layer Transformer contains 191 nodes, among which 89 nodes from ReLU and LayerNorm1d.
+* **Training memory-efficient transformer**: In `nn_transformer.py`, we implemented the memory efficient Transformer model. A one-layer Transformer contains 191 nodes, among which 89 nodes from ReLU and LayerNorm1d.
 
 	In `gc.py`, we wrote the codes of running experiments. This includes initializing Transformer LanguageModel, loading data, training the Transformer model, setting various arguments, and output results. We instantiated a language model with a paraeter `use_gc` to set whether we enable gradient checkpointing or not. In `models.py`, we implemented a language model consisting of an embedding layer, a Transformer model, and a linear layer. The Transformer model is one-layer with embedding_size = 20, hidden_size = 32, and seq_len = 20.
 
@@ -197,10 +199,8 @@ For each experiment, we trained our model for 3 epochs using Adam Optimizer and 
 
 # Results and Discussions
 
-# Conclusion and Future Work
+# Conclusion
 Our gradient checkpointing effectively reduce GPU memory usage of training Transformer-based language models by > 20% saving. We support gradient checkpointing of a complete list of modules and layers in the Transformer model. We offer users a easy-to-use interface and allowed users to selectively segment nodes in layers and select which layers to apply gradient checkpointing. We wrapped up our implementation in an elegant and clean organization and layout. We conducted extensive experiments and ablation study to demonstrate our large memory saving and compare the increase in time cost.
-
-For future, we 
 
 # Reference
 [1]  T. Chen, B. Xu, C. Zhang, and C. Guestrin, "Training deep nets with
