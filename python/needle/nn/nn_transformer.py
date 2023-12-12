@@ -17,8 +17,6 @@ from .nn_basic import (
     annotate
 )
 
-# needle.autograd.LAZY_MODE = True
-
 class MultiHeadAttention(Module):
     """
     The multi-head self attention module.
@@ -118,13 +116,18 @@ class MultiHeadAttention(Module):
             mask = mask.broadcast_to(QK_T.shape)
         else:
             mask = init.zeros(*QK_T.shape, device=QK_T.device, dtype=QK_T.dtype)
+        
         attn = self.softmax(QK_T / d ** .5 + mask)
         
         if self.gc:
-            annotate(attn, (q, v))
+            annotate(attn, (q, k), cur_index=1, segment_len=self.segment_len)
 
         probs = self.dropout(attn)
         result = self.matmul(probs, v.transpose((2,3)))
+        
+        if self.gc:
+            annotate(result, (probs, v), cur_index=1, segment_len=self.segment_len)
+        
         ### END YOUR SOLUTION
 
         return result, probs
@@ -221,22 +224,32 @@ class AttentionLayer(Module):
         # q_D = q_dim // self.num_head
         # k_D = k_dim // self.num_head
         # v_D = v_dim // self.num_head
+        q_in, k_in, v_in = q, k, v
         q = self.q_projection(self.prenorm_q(q).reshape((-1, q_dim)))
         k = self.k_projection(self.prenorm_k(k).reshape((-1, k_dim)))
         v = self.v_projection(self.prenorm_v(v).reshape((-1, v_dim)))
+        
         q = q.reshape((batch_size, queries_len,
                       self.num_head, self.dim_head)).transpose((1, 2))
         k = k.reshape((batch_size, keys_values_len,
                       self.num_head, self.dim_head)).transpose((1, 2))
         v = v.reshape((batch_size, keys_values_len,
                       self.num_head, self.dim_head)).transpose((1, 2))
+        
+        if self.gc:
+            annotate(q, (q_in, ))
+            annotate(k, (k_in, ))
+            annotate(v, (v_in, ))
 
-        attn_output, probs = self.attn(q, k, v)
-        self.probs = probs
+        attn, _ = self.attn(q, k, v)
 
         inner_dim = self.dim_head * self.num_head
-        attn_output = attn_output.transpose((1, 2)).reshape(
+        
+        attn_output = attn.transpose((1, 2)).reshape(
             (batch_size, queries_len, inner_dim))
+        
+        if self.gc:
+            annotate(attn_output, (attn, ))
         
         result = self.out_projection(attn_output.reshape((-1, inner_dim)))
         ### END YOUR SOLUTION
@@ -299,10 +312,18 @@ class TransformerLayer(Module):
 
         ### BEGIN YOUR SOLUTION
         residual_1 = self.dropout(self.attn(x))  # self.attn(q, k, v)
-        x += residual_1
+        
+        x = x + residual_1
+        if self.gc:
+            annotate(x, (residual_1, ))
+        
         x_temp = self.prenorm(x)
+        
         residual_2 = self.seq(x_temp.reshape((-1, x_dim))).reshape(x.shape)
-        x += residual_2
+        x = x + residual_2
+        if self.gc:
+            annotate(x, (residual_1, ))
+        
         ### END YOUR SOLUTION
 
         return x
@@ -370,7 +391,9 @@ class Transformer(Module):
 
         return x, init.zeros_like(x)
 
-    def enable_gc(self):
+    def enable_gc(self, segment_len=None):
+        self.pos_embedding.enable_gc(segment_len=segment_len)
         for mod in self.transformer_layers._children():
-            if isinstance(mod, (needle.nn.nn_basic.LayerNorm1d, needle.nn.nn_basic.ReLU, needle.nn.nn_basic.Linear)):
-                mod.enable_gc()
+            if isinstance(mod, (needle.nn.nn_basic.LayerNorm1d, needle.nn.nn_basic.ReLU, needle.nn.nn_basic.Linear, MultiHeadAttention, AttentionLayer)):
+                mod.enable_gc(segment_len=segment_len)
+        

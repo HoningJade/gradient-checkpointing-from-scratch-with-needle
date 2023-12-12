@@ -394,12 +394,20 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
 
-    # used when lazy mode is off (gradient checkpointing)
+    # used when lazy mode is off (gradient checkpointing) / cached data is realized due to some ops under lazy mode when 
     for node in reverse_topo_order:
         if node.drop:
             node.cached_data = None
 
     gc = sum([node.drop for node in reverse_topo_order])
+
+    # import math
+    # drop_shapes = [node.shape for node in reverse_topo_order if node.drop]
+    # drop_sum = sum([math.prod(s) for s in drop_shapes])
+    # keep_shapes = [node.shape for node in reverse_topo_order if not node.drop]
+    # keep_sum = sum([math.prod(s) for s in keep_shapes])
+    # print(keep_sum / drop_sum)
+    
     # BEGIN YOUR SOLUTION
     for ind, node in enumerate(reverse_topo_order):
         v_i = sum_node_list(node_to_output_grads_list[node])

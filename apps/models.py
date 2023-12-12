@@ -5,7 +5,7 @@ import needle as ndl
 import needle.nn as nn
 import math
 import numpy as np
-
+from needle.nn.nn_basic import annotate
 np.random.seed(0)
 
 
@@ -54,6 +54,7 @@ class LanguageModel(nn.Module):
         seq_model="rnn",
         seq_len=40,
         use_gc=False,
+        segment_len=None,
         device=None,
         dtype="float32",
     ):
@@ -76,12 +77,12 @@ class LanguageModel(nn.Module):
         self.embed = nn.Embedding(
             output_size, embedding_size, device=device, dtype=dtype
         )
+
         if seq_model == "transformer":
             self.seq_model = nn.Transformer(
                 embedding_size, hidden_size, num_layers, device=device, dtype=dtype
             )
-            if use_gc:
-                self.seq_model.enable_gc()
+        
         elif seq_model == "rnn":
             self.seq_model = nn.RNN(
                 embedding_size,
@@ -107,9 +108,15 @@ class LanguageModel(nn.Module):
             self.linear = nn.Linear(
                 hidden_size, output_size, device=device, dtype=dtype
             )
+        
+        if use_gc:
+            self.embed.enable_gc(segment_len=segment_len)
+            self.seq_model.enable_gc(segment_len=segment_len)
+            self.linear.enable_gc(segment_len=segment_len)
+        
         ### END YOUR SOLUTION
 
-    def forward(self, x, h=None):
+    def forward(self, x_in, h=None):
         """
         Given sequence (and the previous hidden state if given), returns probabilities of next word
         (along with the last hidden state from the sequence model).
@@ -123,14 +130,22 @@ class LanguageModel(nn.Module):
             else h is tuple of (h0, c0), each of shape (num_layers, bs, hidden_size)
         """
         ### BEGIN YOUR SOLUTION
-        seq_len, bs = x.shape
+        seq_len, bs = x_in.shape
 
-        x = self.embed(x)
-        x, h = self.seq_model(x, h)
+        x = self.embed(x_in)
+        
+        if self.gc:
+            annotate(x, (x_in, ))
+        
+        x_seq, h = self.seq_model(x, h)
         if self.seq_model_name == "transformer":
-            x = self.linear(x.reshape((seq_len * bs, self.embedding_size)))
+            x = self.linear(x_seq.reshape((seq_len * bs, self.embedding_size)))
         else:
-            x = self.linear(x.reshape((seq_len * bs, self.hidden_size)))
+            x = self.linear(x_seq.reshape((seq_len * bs, self.hidden_size)))
+            
+        if self.gc:
+            annotate(x, (x_seq, ))
+        
         return x, h
         ### END YOUR SOLUTION
 

@@ -7,14 +7,18 @@ import needle.init as init
 
 
 # utils for gradient checkpointing
-def annotate(out_node, in_nodes):
+def annotate(out_node, in_nodes, cur_index=0, segment_len=None):
     for in_node in in_nodes:
         if out_node is in_node:
             return
 
     for node in out_node.inputs:
-        node.drop = node.op is not None
-        annotate(node, in_nodes)
+        if segment_len:
+            node.drop = node.op is not None and (cur_index == 0 or cur_index % segment_len != 0)
+        else:
+            node.drop = node.op is not None
+        
+        annotate(node, in_nodes, cur_index=cur_index+1, segment_len=segment_len)
 
 
 class Parameter(Tensor):
@@ -63,6 +67,7 @@ class Module:
     def __init__(self):
         self.training = True
         self.gc = False
+        self.segment_len = None
 
     def parameters(self) -> List[Tensor]:
         """Return the list of parameters in the module."""
@@ -81,8 +86,9 @@ class Module:
         for m in self._children():
             m.training = True
 
-    def enable_gc(self):
+    def enable_gc(self, segment_len=None):
         self.gc = True
+        self.segment_len = segment_len
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
@@ -122,7 +128,7 @@ class Linear(Module):
             bias = ops.broadcast_to(self.bias, Y.shape)
             Y += bias
         if self.gc:
-            annotate(Y, (X,))
+            annotate(Y, (X,), segment_len=self.segment_len)
         return Y
         # END YOUR SOLUTION
 
@@ -142,7 +148,7 @@ class ReLU(Module):
         # BEGIN YOUR SOLUTION
         output = ops.relu(x)
         if self.gc:
-            annotate(output, (x,))
+            annotate(output, (x,), segment_len=self.segment_len)
         return output
         # END YOUR SOLUTION
 
@@ -283,7 +289,7 @@ class LayerNorm1d(Module):
         output = weight * x_normalized + bias
 
         if self.gc:
-            annotate(output, (x,))
+            annotate(output, (x,), segment_len=self.segment_len)
 
         return output
         # END YOUR SOLUTION

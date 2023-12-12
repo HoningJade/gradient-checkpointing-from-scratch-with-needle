@@ -11,6 +11,7 @@ import needle.nn as nn
 from apps.models import *
 import time
 import matplotlib.pyplot as plt
+from needle.nn.nn_basic import annotate
 
 
 def plot_memory(mem):
@@ -223,7 +224,7 @@ def epoch_general_ptb(
     nbatch, batch_size = data.shape
 
     hidden = None
-
+    
     gpu = GPU.getGPUs()[0]
     base = gpu.memoryUsed
     print(
@@ -240,6 +241,7 @@ def epoch_general_ptb(
         batch_size = y.shape[0]
         dataset_size += batch_size
         y_pred, hidden = model(x, hidden)
+
         # detach the hidden state to avoid blowing up computational graph
         # between training on different sequences
 
@@ -254,9 +256,9 @@ def epoch_general_ptb(
         if train:
             opt.reset_grad()
             loss.backward()
-
-            GPUs = GPU.getGPUs()
+            
             base = 0
+            GPUs = GPU.getGPUs()
             for gpu in GPUs[:1]:
                 print(
                     "GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(
@@ -269,7 +271,7 @@ def epoch_general_ptb(
                 peak_mem = max(gpu.memoryUsed - base, peak_mem)
 
                 memo.append(gpu.memoryUsed - base)
-
+            
             opt.step()
 
         losses.append(loss.numpy() * batch_size)

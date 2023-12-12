@@ -34,6 +34,7 @@ class LogSumExp(TensorOp):
         # BEGIN YOUR SOLUTION
         if self.axes == (-1, ):
             self.axes = (len(Z.shape)-1, )
+
         z = Z.max(axis=self.axes, keepdims=True)
         z_broadcast = array_api.broadcast_to(z, Z.shape)
         log_sum_exp = array_api.log(array_api.sum(array_api.exp(
@@ -48,6 +49,7 @@ class LogSumExp(TensorOp):
             log_sum_exp = log_sum_exp.reshape(new_shape)  # .astype(Z.dtype)
         else:
             self.reduced_shape = (1,) * len(Z.shape)
+        
         return log_sum_exp
         # END YOUR SOLUTION
 
@@ -70,7 +72,7 @@ class LogSumExp(TensorOp):
         else:
             grad = out_grad
         return broadcast_to(grad, input.shape) * Tensor(prob, dtype=grad.dtype, device=grad.device)
-
+    
 
 def logsumexp(a, axes=None):
     return LogSumExp(axes=axes)(a)

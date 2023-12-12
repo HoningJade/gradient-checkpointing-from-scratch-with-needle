@@ -13,6 +13,7 @@ from simple_ml import train_ptb, evaluate_ptb
 # Parser
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", type=int, default=256)
+parser.add_argument("--segment_len", type=int, default=None)
 parser.add_argument("--use_gc", action="store_true")
 parser.add_argument("--lazy", action="store_false")
 args = parser.parse_args()
@@ -24,6 +25,7 @@ use_gc = args.use_gc
 if use_gc:
     print("using gradient checkpointing...")
 
+print(args)
 
 # Setup Model
 ## fixed argument values
@@ -32,8 +34,9 @@ corpus = ndl.data.Corpus("data/ptb")
 train_data = ndl.data.batchify(
     corpus.train, batch_size=args.batch_size, device=device, dtype="float32"
 )
-n_epoch = 3
+n_epoch = 2
 embedding_size = 20
+hidden_size = 32
 output_size = len(corpus.dictionary)
 num_layers = 1
 seq_len = 20
@@ -41,16 +44,26 @@ seq_len = 20
 model = LanguageModel(
     embedding_size=embedding_size,
     output_size=output_size,
-    hidden_size=args.batch_size,
+    hidden_size=hidden_size,
     num_layers=num_layers,
     seq_model="transformer",
     seq_len=seq_len,
     device=device,
     use_gc=use_gc,
+    segment_len=args.segment_len
+)
+
+avg_acc, avg_loss, memo = train_ptb(
+    model,
+    train_data,
+    seq_len=seq_len,
+    n_epochs=1,
+    device=device,
+    lr=0.003,
+    optimizer=ndl.optim.Adam,
 )
 
 start = time.time()
-
 avg_acc, avg_loss, memo = train_ptb(
     model,
     train_data,
@@ -62,6 +75,7 @@ avg_acc, avg_loss, memo = train_ptb(
 )
 
 time_used = time.time() - start
+
 # evaluate_ptb(model, train_data, seq_len=20, device=device)
 
 result = {
@@ -69,8 +83,9 @@ result = {
     "batch_size": args.batch_size,
     "peak memory": max(memo),
     "use_gc": args.use_gc,
+    "segment_len": args.segment_len if args.segment_len else 'max'
 }
 
 print(result)
-with open(f"result_{args.batch_size}{'_gc' if use_gc else ''}.json", "w") as f:
+with open(f"result_{args.batch_size}{'_gc' if use_gc else ''}_{args.segment_len if args.segment_len else 'max'}.json", "w") as f:
     json.dump(result, f)

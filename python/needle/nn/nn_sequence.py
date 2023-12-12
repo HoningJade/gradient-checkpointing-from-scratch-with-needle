@@ -5,7 +5,7 @@ from needle.autograd import Tensor
 from needle import ops
 import needle.init as init
 import numpy as np
-from .nn_basic import Parameter, Module, Tanh, ReLU
+from .nn_basic import Parameter, Module, Tanh, ReLU, annotate
 import math
 
 
@@ -379,6 +379,9 @@ class Embedding(Module):
         output = ops.matmul(x_one_hot, self.weight)
         # l, b, d
         output = ops.reshape(output, (n, b, self.embedding_dim))
+        
+        if self.gc:
+            annotate(output, (x, ), segment_len=self.segment_len)
 
         return output
         # END YOUR SOLUTION
