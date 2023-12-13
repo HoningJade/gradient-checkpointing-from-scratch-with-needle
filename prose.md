@@ -198,9 +198,30 @@ We tested our model performance on PTB dataset with batch_size = 256 and GPU dev
 For each experiment, we trained our model for 3 epochs using Adam Optimizer and learning rate 0.003. We evaluated Peak GPU memory usage during batch training (max. among epoch) and average time cost of each batch. We reported the average results across three runs.
 
 # Results and Discussions
+# Experiments 
+
+We tested our model performance on PTB dataset with batch_size = 256 and a NVIDIA RTX 6000 GPU device. We also varied batch size, segment length, and which layers to apply gradient checkpointing to compare performance.
+
+For each experiment, we trained our model for 3 epochs using Adam Optimizer and learning rate 0.003. We evaluated Peak GPU memory usage during batch training (max. among epoch) and average time cost of each batch. We reported the average results across three runs.
+
+# Results and Discussions
+* The figure below shows **memory reduction vs batch size**, with segment_len = 4 and hidden size = 2048. Our model saves > 55% GPU memory costs for all tested batch sizes. Larger batch size, more memory reduction. When batch size = 2048, our memory-efficient Transformer mdoel achieves the most memory saving of > 62% compared with no-gradient-checkpointing Transformer.
+![image](https://github.com/Criss-Wang/needle/assets/56707771/8dbefb0e-0912-48e1-8bc4-815a954ff429)
+
+* The figure below shows **memory reduction vs hidden size**, with segment_len = 4 and batch size = 2048. Our model saves > 60% GPU memory costs for all tested hidden sizes. Larger hidden size, more memory reduction. When hidden size = 2048, our memory-efficient Transformer mdoel achieves the most memory saving of > 62% compared with no-gradient-checkpointing Transformer.
+![image](https://github.com/Criss-Wang/needle/blob/main/memory_hidden.jpg)
+
+
+* The figure below shows **time increase (in seconds) vs segment length** (we keep one node every segment length of nodes), with batch size = 2048 and hidden size = 2048. In the figure, the 0 bar refers to no gradient checkpointing, which is the baseline. As segment length increases, more time increases. We find that segment length = 4 may be the best choice since it only slightly increase the time cost but reduces memory cost greatly.
+  
+![image](https://github.com/Criss-Wang/needle/blob/main/time_segment.jpg)
+
+* **Balance memory reduction and time increase**: while in our above results, our system significantly reduces memory cost, there is still space to reduce time increase. For future, we plan to further optimize training efficiency by checkpointing nodes according to their operation to make sure the computationally expensives ones are saved. Currently, we follow a heuristic by saving every n nodes (we set n = 4) based on our empirical analysis. 
 
 # Conclusion
 Our gradient checkpointing effectively reduce GPU memory usage of training Transformer-based language models by > 20% saving. We support gradient checkpointing of a complete list of modules and layers in the Transformer model. We offer users a easy-to-use interface and allowed users to selectively segment nodes in layers and select which layers to apply gradient checkpointing. We wrapped up our implementation in an elegant and clean organization and layout. We conducted extensive experiments and ablation study to demonstrate our large memory saving and compare the increase in time cost.
+
+For future, we will benchmark memory savings of our gradient checkpointing implementation on larger models. Due to constraints on computation resources, we mainly experimented small models. Based on our experiments, we observed that we save more memories when the model's hidden size is larger. Thus, we expect our implementation to save more memory on larger models.
 
 # Reference
 [1]  T. Chen, B. Xu, C. Zhang, and C. Guestrin, "Training deep nets with
